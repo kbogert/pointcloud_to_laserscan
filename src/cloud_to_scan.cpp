@@ -37,6 +37,8 @@
 #include "pcl/ros/conversions.h"
 #include "dynamic_reconfigure/server.h"
 #include "pointcloud_to_laserscan/CloudScanConfig.h"
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
 
 namespace pointcloud_to_laserscan
 {
@@ -52,7 +54,8 @@ public:
                  scan_time_(1.0/30.0),
                  range_min_(0.45),
                  range_max_(10.0),
-                 output_frame_id_("/kinect_depth_frame")
+                 output_frame_id_("/kinect_depth_frame"),
+                 ref_frame_id_("/kinect_link")
   {
   };
 
@@ -69,6 +72,7 @@ private:
   dynamic_reconfigure::Server<pointcloud_to_laserscan::CloudScanConfig>* srv_;
 
   tf::TransformListener listener;
+  tf::TransformBroadcaster broadcaster;
 
   virtual void onInit()
   {
@@ -88,6 +92,7 @@ private:
     range_min_sq_ = range_min_ * range_min_;
 
     private_nh.getParam("output_frame_id", output_frame_id_);
+    private_nh.getParam("ref_frame_id", ref_frame_id_);
 
     srv_ = new dynamic_reconfigure::Server<pointcloud_to_laserscan::CloudScanConfig>(private_nh);
     dynamic_reconfigure::Server<pointcloud_to_laserscan::CloudScanConfig>::CallbackType f = boost::bind(&CloudToScan::reconfigure, this, _1, _2);
@@ -149,23 +154,42 @@ private:
     uint32_t ranges_size = std::ceil((output->angle_max - output->angle_min) / output->angle_increment);
     output->ranges.assign(ranges_size, output->range_max + 1.0);
 
-    tf::StampedTransform transform;
+    // transform from camera into reference frame
+    tf::StampedTransform cloud_to_ref;
     try{
-      listener.waitForTransform(output_frame_id_, cloud->header.frame_id, cloud->header.stamp, ros::Duration(1.0) );
-      listener.lookupTransform(output_frame_id_, cloud->header.frame_id, cloud->header.stamp, transform);
+      listener.waitForTransform(ref_frame_id_, cloud->header.frame_id, cloud->header.stamp, ros::Duration(1.0) );
+      listener.lookupTransform(ref_frame_id_, cloud->header.frame_id, cloud->header.stamp, cloud_to_ref);
     }
     catch (tf::TransformException ex){
       ROS_ERROR("%s",ex.what());
     }
 
+    tf::Vector3 origin = 1.0 * cloud_to_ref.getOrigin();
+    origin.setZ( (min_height_+max_height_)*0.5 );
+
+    // transform from reference into 'virtual laser' output frame
+    tf::StampedTransform ref_to_out;
+    ref_to_out.frame_id_ = ref_frame_id_;
+    ref_to_out.child_frame_id_ = output_frame_id_;
+    ref_to_out.stamp_ = cloud->header.stamp;
+    ref_to_out.setOrigin( origin );
+    ref_to_out.setRotation( tf::Quaternion(0,0,0,1) );
+    broadcaster.sendTransform( ref_to_out );
+
+    // transform from cloud into output frame at zero height
+    origin.setZ( 0.0 );
+    ref_to_out.setOrigin( origin );
+    tf::Transform cloud_to_out;
+    cloud_to_out.mult( ref_to_out.inverse(), cloud_to_ref );
+
     for (PointCloud::const_iterator it = cloud->begin(); it != cloud->end(); ++it)
     {
       tf::Vector3 p(it->x,it->y,it->z);
-      p = transform(p);
+      p = cloud_to_out(p);
 
-      float x = p.x();
-      float y = p.y();
-      float z = p.z();
+      const float &x = p.x();
+      const float &y = p.y();
+      const float &z = p.z();
 
       if ( std::isnan(x) || std::isnan(y) || std::isnan(z) )
       {
@@ -173,26 +197,25 @@ private:
         continue;
       }
 
-      if (-y > max_height_ || -y < min_height_)
+      if (z > max_height_ || z < min_height_)
       {
-        NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", x, min_height_, max_height_);
+        NODELET_DEBUG("rejected for height %f not in range (%f, %f)\n", p.z(), min_height_, max_height_);
         continue;
       }
 
-      double range_sq = z*z+x*x;
+      double range_sq = y*y+x*x;
       if (range_sq < range_min_sq_) {
         NODELET_DEBUG("rejected for range %f below minimum value %f. Point: (%f, %f, %f)", range_sq, range_min_sq_, x, y, z);
         continue;
       }
 
-      double angle = -atan2(x, z);
+      double angle = -atan2(-y, x);
       if (angle < output->angle_min || angle > output->angle_max)
       {
         NODELET_DEBUG("rejected for angle %f not in range (%f, %f)\n", angle, output->angle_min, output->angle_max);
         continue;
       }
       int index = (angle - output->angle_min) / output->angle_increment;
-
 
       if (output->ranges[index] * output->ranges[index] > range_sq)
         output->ranges[index] = sqrt(range_sq);
@@ -203,7 +226,7 @@ private:
 
 
   double min_height_, max_height_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_, range_max_, range_min_sq_;
-  std::string output_frame_id_;
+  std::string output_frame_id_, ref_frame_id_;
 
   ros::NodeHandle nh_;
   ros::Publisher pub_;
