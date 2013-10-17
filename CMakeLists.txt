@@ -16,13 +16,13 @@ generate_dynamic_reconfigure_options(cfg/CloudScan.cfg)
 # make sure configure headers are built before any node using them
 
 catkin_package(
-  INCLUDE_DIRS include
+  INCLUDE_DIRS 
   LIBRARIES cloud_to_scan
   CATKIN_DEPENDS sensor_msgs nodelet pcl_ros pcl_conversions dynamic_reconfigure roscpp
   DEPENDS system_lib
 )
 
-include_directories(include ${catkin_INCLUDE_DIRS})
+include_directories(${catkin_INCLUDE_DIRS})
 link_libraries(${catkin_LIBRARIES})
 
 # Build
