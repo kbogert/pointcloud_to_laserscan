@@ -34,7 +34,7 @@
 #include "pcl/point_cloud.h"
 #include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
-#include "pcl/ros/conversions.h"
+#include "pcl/conversions.h"
 #include "dynamic_reconfigure/server.h"
 #include "pointcloud_to_laserscan/CloudScanConfig.h"
 #include <tf/transform_listener.h>
@@ -141,7 +141,7 @@ private:
   void callback(const PointCloud::ConstPtr& cloud)
   {
     sensor_msgs::LaserScanPtr output(new sensor_msgs::LaserScan());
-    output->header = cloud->header;
+    output->header = pcl_conversions::fromPCL(cloud->header);
     output->header.frame_id = output_frame_id_; // Set output frame. Point clouds come from "optical" frame, scans come from corresponding mount frame
     output->angle_min = angle_min_;
     output->angle_max = angle_max_;
@@ -157,8 +157,8 @@ private:
     // transform from camera into reference frame
     tf::StampedTransform cloud_to_ref;
     try{
-      listener.waitForTransform(ref_frame_id_, cloud->header.frame_id, cloud->header.stamp, ros::Duration(1.0) );
-      listener.lookupTransform(ref_frame_id_, cloud->header.frame_id, cloud->header.stamp, cloud_to_ref);
+      listener.waitForTransform(ref_frame_id_, cloud->header.frame_id, pcl_conversions::fromPCL(cloud->header).stamp, ros::Duration(1.0) );
+      listener.lookupTransform(ref_frame_id_, cloud->header.frame_id, pcl_conversions::fromPCL(cloud->header).stamp, cloud_to_ref);
     }
     catch (tf::TransformException ex){
       ROS_ERROR("%s",ex.what());
@@ -171,7 +171,7 @@ private:
     tf::StampedTransform ref_to_out;
     ref_to_out.frame_id_ = ref_frame_id_;
     ref_to_out.child_frame_id_ = output_frame_id_;
-    ref_to_out.stamp_ = cloud->header.stamp;
+    ref_to_out.stamp_ = pcl_conversions::fromPCL(cloud->header).stamp;
     ref_to_out.setOrigin( origin );
     ref_to_out.setRotation( tf::Quaternion(0,0,0,1) );
     broadcaster.sendTransform( ref_to_out );

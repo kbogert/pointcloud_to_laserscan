@@ -1,37 +1,32 @@
-cmake_minimum_required(VERSION 2.4.6)
-include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+cmake_minimum_required(VERSION 2.8.3)
+project(pointcloud_to_laserscan)
 
-# Set the build type.  Options are:
-#  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
-#  Debug          : w/ debug symbols, w/o optimization
-#  Release        : w/o debug symbols, w/ optimization
-#  RelWithDebInfo : w/ debug symbols, w/ optimization
-#  MinSizeRel     : w/o debug symbols, w/ optimization, stripped binaries
-#set(ROS_BUILD_TYPE RelWithDebInfo)
+## Find catkin macros and libraries
+## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+## is used, also find other catkin packages
+find_package(
+    catkin REQUIRED COMPONENTS 
+    sensor_msgs nodelet
+    pcl_ros pcl_conversions 
+    dynamic_reconfigure roscpp
+)
 
-rosbuild_init()
+generate_dynamic_reconfigure_options(cfg/CloudScan.cfg)
 
-#set the default path for built executables to the "bin" directory
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
-#set the default path for built libraries to the "lib" directory
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
+# make sure configure headers are built before any node using them
 
-#uncomment if you have defined messages
-#rosbuild_genmsg()
-#uncomment if you have defined services
-#rosbuild_gensrv()
+catkin_package(
+  INCLUDE_DIRS include
+  LIBRARIES cloud_to_scan
+  CATKIN_DEPENDS sensor_msgs nodelet pcl_ros pcl_conversions dynamic_reconfigure roscpp
+  DEPENDS system_lib
+)
 
-#common commands for building c++ executables and libraries
-#rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
-#target_link_libraries(${PROJECT_NAME} another_library)
-#rosbuild_add_boost_directories()
-#rosbuild_link_boost(${PROJECT_NAME} thread)
-#rosbuild_add_executable(example examples/example.cpp)
-#target_link_libraries(example ${PROJECT_NAME})
+include_directories(include ${catkin_INCLUDE_DIRS})
+link_libraries(${catkin_LIBRARIES})
 
-rosbuild_add_library(cloud_to_scan src/cloud_to_scan.cpp src/cloud_throttle.cpp)
+# Build
+add_library(cloud_to_scan src/cloud_to_scan.cpp src/cloud_throttle.cpp)
+add_dependencies(cloud_to_scan ${PROJECT_NAME}_gencfg)
 
-#add dynamic reconfigure api
-rosbuild_find_ros_package(dynamic_reconfigure)
-include(${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake)
-gencfg()
+
