@@ -136,6 +136,10 @@ private:
     range_max_ = config.range_max;
 
     range_min_sq_ = range_min_ * range_min_;
+
+    output_frame_id_ = config.output_frame_id;
+    ref_frame_id_ = config.ref_frame_id;
+
   }
 
   void callback(const PointCloud::ConstPtr& cloud)
